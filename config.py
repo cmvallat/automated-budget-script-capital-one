@@ -1,2 +1,2 @@
-mintUsername = "christianvallat02@gmail.com"
-mintPassword = "Gdtbath21!"
+mintUsername = "yourusername"
+mintPassword = "yourpassword"

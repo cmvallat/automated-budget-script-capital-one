@@ -5,9 +5,13 @@ from df2gspread import df2gspread as d2g
 from oauth2client.service_account import ServiceAccountCredentials
 from config import mintUsername, mintPassword
 
-def next_available_row(worksheet):
-    str_list = list(filter(None, worksheet.col_values(1)))
-    return str(len(str_list)+1)
+# def next_available_row(worksheet):
+#     str_list = list(filter(None, worksheet.col_values(1)))
+#     return str(len(str_list)+1)
+
+def colorTextGreen():
+
+    print("hello")
 
 mint = mintapi.Mint(
     email = mintUsername,  # Email used to log in to Mint
@@ -48,6 +52,8 @@ transformed_transactions_amt = []
 categories = {'rent':0, 'groceries':0}
 
 #take each transaction, get vendor and price and map certain values
+transactionCounter = 1
+paymentRows = []
 for transaction in transactions:
 
     #map common transactions and add to known categories
@@ -57,9 +63,12 @@ for transaction in transactions:
     if "hellolanding.com" in transaction['description'].lower():
         transaction['description'] = "Rent"
         categories["rent"] += round((transaction['amount'] * -1),2)
+    if( (transaction['amount'] * -1) < 0):
+            paymentRows.append(transactionCounter)
 
     transformed_transactions_desc.append(transaction['description'].title())
     transformed_transactions_amt.append(str(round((transaction['amount'] * -1),2)))
+    transactionCounter += 1
 
 #format categories
 cat_keys = []
@@ -102,6 +111,34 @@ cat_values = categories_df.values.tolist()
 sh.append_rows(cat_values)
 print("uploaded categories, check Google Sheet")
 print("\n")
+
+#make all cells red as default
+sh.format("A1:B" + str(transactionCounter), {
+        "textFormat": {
+        "foregroundColor": {
+            "red": 1.0,
+            "green": 0.0,
+            "blue": 0.0
+        },
+        }
+    })
+
+if not paymentRows:
+    print("paymentRows is null")
+#make payment transactions green
+for row in paymentRows:
+    formatString = "A" + str(row) + ":B" + str(row)
+    print(formatString)
+    sh.format(formatString, {
+        "textFormat": {
+        "foregroundColor": {
+            "red": 0.0,
+            "green": 11.0,
+            "blue": 0.0
+        },
+        }
+    })
+
 
 
 
