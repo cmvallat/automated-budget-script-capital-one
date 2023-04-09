@@ -4,14 +4,17 @@ import gspread
 from df2gspread import df2gspread as d2g
 from oauth2client.service_account import ServiceAccountCredentials
 from config import mintUsername, mintPassword
+from datetime import datetime as dt
 
-# def next_available_row(worksheet):
-#     str_list = list(filter(None, worksheet.col_values(1)))
-#     return str(len(str_list)+1)
+# use creds to create a client to interact with the Google Drive API
+# eventually pass in these credentials and other params as inputs when running the script
+scope = ['https://spreadsheets.google.com/feeds']
+creds = ServiceAccountCredentials.from_json_keyfile_name('credentials_mint.json', scope)
+client = gspread.authorize(creds)
 
-def colorTextGreen():
-
-    print("hello")
+# Setup for google sheets
+spreadsheet_key = "1cjuu9-vOJzKbV9sMBtibIfAjKseW8HACmdxa2z_bAdg"
+sh = client.open_by_key(spreadsheet_key).sheet1
 
 mint = mintapi.Mint(
     email = mintUsername,  # Email used to log in to Mint
@@ -38,8 +41,8 @@ mint = mintapi.Mint(
     # wait_for_sync_timeout=300,  # number of seconds to wait for sync
 )
 
-#change date range each time to only get newest posted transactions
-transactions = mint.get_transaction_data(start_date = "03-20-23", end_date = "03-22-23")
+#filtering date here with start_date doesn't work so we do it below
+transactions = mint.get_transaction_data()
 
 #check that we recieved the transactions
 if(transactions):
@@ -49,26 +52,33 @@ if(transactions):
 
 transformed_transactions_desc = []
 transformed_transactions_amt = []
+transformed_transactions_date = []
 categories = {'rent':0, 'groceries':0}
+sh.update('A1', "Transactions since 04/01:")
 
 #take each transaction, get vendor and price and map certain values
-transactionCounter = 1
+transactionCounter = 0
 paymentRows = []
 for transaction in transactions:
+    # print(transaction['date'])
+    trans_date = dt.strptime(transaction['date'], "%Y-%m-%d")
+    cutoff_date = dt.strptime("2023-04-01", "%Y-%m-%d")
+    if trans_date >= cutoff_date:
+        #map common transactions and add to known categories
+        if "king soopers" in transaction['description'].lower():
+            transaction['description'] = "KS"
+            categories["groceries"] += round((transaction['amount'] * -1),2)
+        if "hellolanding.com" in transaction['description'].lower():
+            transaction['description'] = "Rent"
+            categories["rent"] += round((transaction['amount'] * -1),2)
+        if( (transaction['amount'] * -1) < 0):
+                paymentRows.append(transactionCounter)
 
-    #map common transactions and add to known categories
-    if "king soopers" in transaction['description'].lower():
-        transaction['description'] = "KS"
-        categories["groceries"] += round((transaction['amount'] * -1),2)
-    if "hellolanding.com" in transaction['description'].lower():
-        transaction['description'] = "Rent"
-        categories["rent"] += round((transaction['amount'] * -1),2)
-    if( (transaction['amount'] * -1) < 0):
-            paymentRows.append(transactionCounter)
-
-    transformed_transactions_desc.append(transaction['description'].title())
-    transformed_transactions_amt.append(str(round((transaction['amount'] * -1),2)))
-    transactionCounter += 1
+        transformed_transactions_desc.append(transaction['description'].title())
+        transformed_transactions_amt.append(str(round((transaction['amount'] * -1),2)))
+        truncated_date = str(trans_date.month) + "-" + str(trans_date.day) + "-" + str(trans_date.year)
+        transformed_transactions_date.append(truncated_date)
+        transactionCounter += 1
 
 #format categories
 cat_keys = []
@@ -78,7 +88,7 @@ for cat in categories:
    cat_values.append(categories[cat])
 
 #convert transactions to pandas dataframe so we can write to the Google Sheet
-transactions_df = pd.DataFrame(list(zip(transformed_transactions_desc, transformed_transactions_amt)), columns=['vendor', 'price'])
+transactions_df = pd.DataFrame(list(zip(transformed_transactions_desc, transformed_transactions_amt, transformed_transactions_date)), columns=['vendor', 'price', 'date'])
 if(str(type(transactions_df)) == "<class 'pandas.core.frame.DataFrame'>"):
     print("converted transactions to dataframe correctly, ready to upload")
     print("\n")
@@ -89,16 +99,7 @@ if(str(type(categories_df)) == "<class 'pandas.core.frame.DataFrame'>"):
     print("converted categories to dataframe correctly, ready to upload")
     print("\n")
 
-# use creds to create a client to interact with the Google Drive API
-scope = ['https://spreadsheets.google.com/feeds']
-creds = ServiceAccountCredentials.from_json_keyfile_name('credentials_mint.json', scope)
-client = gspread.authorize(creds)
-
-#next_row = next_available_row(worksheet)x
-
-# Setup for google sheets
-spreadsheet_key = "1cjuu9-vOJzKbV9sMBtibIfAjKseW8HACmdxa2z_bAdg"
-sh = client.open_by_key(spreadsheet_key).sheet1
+#insert line here to clear the google sheet first with every refresh
 
 #write transaction rows to google sheets
 trans_values = transactions_df.values.tolist()
@@ -113,13 +114,11 @@ print("uploaded categories, check Google Sheet")
 print("\n")
 
 #make all cells red as default
-sh.format("A1:B" + str(transactionCounter), {
-        "textFormat": {
-        "foregroundColor": {
-            "red": 1.0,
-            "green": 0.0,
-            "blue": 0.0
-        },
+sh.format("A2:B" + str(transactionCounter+1), {
+         "backgroundColor": {
+            "red": float((244/255)),
+            "green": float((204/255)),
+            "blue": float((204/255))
         }
     })
 
@@ -127,38 +126,19 @@ if not paymentRows:
     print("paymentRows is null")
 #make payment transactions green
 for row in paymentRows:
-    formatString = "A" + str(row) + ":B" + str(row)
-    print(formatString)
+    formatString = "A" + str(row+2) + ":B" + str(row+2)
     sh.format(formatString, {
-        "textFormat": {
-        "foregroundColor": {
-            "red": 0.0,
-            "green": 11.0,
-            "blue": 0.0
-        },
+        "backgroundColor": {
+            "red": float((217/255)),
+            "green": float((234/255)),
+            "blue": float((211/255))
         }
     })
 
+print("formatted cells correctly")
 
 
+#Useful documentation
 
-
-#d2g.upload(transactions_df,spreadsheet_key,"Sheet1",credentials=creds,row_names=True)
-#.format(next_row)
-
-
-
-# gc = gspread.service_account()
-#df = pd.DataFrame({'Name': ['Bea', 'Andrew', 'Mike'], 'Age': [20, 19, 23]})
-
-
-# worksheet = client.open("Testing Budget API").sheet1
-
-#insert on the next available row
-
-#worksheet.update_acell("B{}".format(next_row), "rent")
-# worksheet.update_acell("C{}".format(next_row), 56)
-
-# d2g.upload(categories_df,spreadsheet_key,"Sheet1",credentials=creds,row_names=True, start_cell="A170")
-# print("uploaded categories, check Google Sheet")
-# print("\n")
+#how to set a cell value to formula:
+# sh.update('E3', "=FILTER(A1:C, DATEVALUE(C1:C) >= DATE(2023,3,24))", raw=False)
