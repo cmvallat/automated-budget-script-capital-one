@@ -1,7 +1,10 @@
-#define dictionary
-categories = {'rent':4572, 'groceries':1740.19}
+from datetime import datetime as dt
 
-for key in categories:
-   print ("%s: %s" % (key, categories[key]))
+date = dt.now()
 
+print(date)
+
+truncated_date = str(date.month) + "-" + str(date.day) + "-" + str(date.year)
+
+print(truncated_date)
 
